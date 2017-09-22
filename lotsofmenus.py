@@ -292,5 +292,5 @@ menuItem2 = MenuItem(name = "Cachapa", description = "Golden brown, corn-based v
 session.add(menuItem2)
 session.commit()
 
-print "added menu items!"
+print("added menu items!")
 
