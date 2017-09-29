@@ -239,6 +239,8 @@ def gconnect():
 
     # 2. Obtain authorization code
     code = request.data
+    print("code", code)
+    print("type of code: ", type(code))
 
     # 3. Upgrade the authorization code into a credentials object
     try:
@@ -310,10 +312,87 @@ def gconnect():
     return output
 
 
-def resp_json(mess, code):
-    response = make_response(json.dumps(mess), code)
-    response.headers['Content-Type'] = 'application/json'
-    return response
+# Facebook login
+@app.route('/fbconnect', methods=['POST'])
+def fbconnect():
+    if request.args.get('state') != login_session['state']:
+        return resp_json('Invalid state parameters.', 401)
+
+    access_token = request.data.decode('utf-8')
+
+    # exchange client token for long-lived server-side token
+    fb_client_secrets = json.loads(open('fb_client_secrets.json', 'r').read())['web']
+    app_id = fb_client_secrets['app_id']
+    app_secret = fb_client_secrets['app_secret']
+
+    url = 'https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=%s&client_secret=%s&fb_exchange_token=%s' % (
+        app_id, app_secret, access_token)
+    h = httplib2.Http()
+    exchange_result = h.request(url, 'GET')
+    result = exchange_result[1]
+
+    # Use token to get user info from API
+    token = json.loads(result.decode('utf-8'))['access_token']
+    print(token)
+    userinfo_url = "https://graph.facebook.com/v2.8/me?access_token=%s&fields=name,id,email" % token
+    info_result = h.request(url, 'GET')
+    print("[[[info_result]]]")
+    print(info_result)
+    
+    data = json.loads(info_result)
+    login_session['provider'] = 'facebook'
+    login_session['username'] = data['name']
+    login_session['email'] = data['email']
+    login_session['facebook_id'] = data['id']
+
+    # store token
+    login_session['access_token'] = token
+
+    # get user picture
+    h = httplib2.Http()
+    picture_result = h.request("https://graph.facebook.com/v2.2/me/picture?%s&redirect=0&height=200&width=200" % token, 'GET')[1]
+    picture_data = json.loads(picture_result)
+    login_session['picture'] = picture_data["data"]["url"]
+
+    # Check if user exists
+    user_id = getUserId(login_session['email'])
+    if not user_id:
+        user_id = createUser(login_session)
+    login_session['user_id'] = user_id
+
+    output = ''
+    output += '<h1>Welcome, '
+    output += login_session['username']
+    output += '!</h1>'
+    output += '<img src="'
+    output += login_session['picture']
+    output += ' " style = "width: 300px; height: 300px;border-radius: 150px;-webkit-border-radius: 150px;-moz-border-radius: 150px;"> '
+    flash("you are now logged in as %s" % login_session['username'])
+
+    return output
+
+
+@app.route('/disconnect')
+def disconnect():
+    if 'provider' in login_session:
+        if login_session['provider'] == 'google':
+            gdisconnect()
+            # del login_session['gplus_id']
+            # del login_session['credentials']
+        elif login_session['provider'] == 'facebook':
+            fbdisconnect()
+            del login_session['facebook_id']
+
+        del login_session['user_id']
+        # del login_session['username']
+        # del login_session['email']
+        # del login_session['picture']
+        del login_session['provider']
+        flash('You have successfully been logged out.')
+        return redirect(url_for('showRestaurants'))
+    else:
+        flash("You were not logged in to begin with!")
+        return redirect(url_for('showRestaurants'))
 
 
 # Step 6: disconnect -> revoke current user's token and reset login_session
@@ -345,60 +424,11 @@ def gdisconnect():
         return resp_json('Failed to revoke token for given user.', 400)
 
 
-# Facebook login
-@app.route('/fbconnect', methods=['POST'])
-def fbconnect():
-    if request.args.get('state') != login_session['state']:
-        return resp_json('Invalid state parameters.', 401)
-
-    access_token = request.data
-
-    # exchange client token for long-lived server-side token
-    fb_client_secrets = json.loads(open('fb_client_secrets.json', 'r').read())['web']
-    app_id = fb_client_secrets['app_id']
-    app_secret = fb_client_secrets['app_secret']
-
-    url = "https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=%s&client_secret=%s&fb_exchange_token=%s" % (app_id,app_secret,access_token)
-    h = httplib2.Http()
-    result = h.request(url, 'GET')[1]
-
-    # Use token to get user info from API
-    token = result.split("&")[0]
-    userinfo_url = "https://graph.facebook.com/v2.8/me?%s&fields=name,id,email" % token
-    info_result = h.request(url, 'GET')[1]
-    data = json.loads(info_result)
-    login_session['provider'] = 'facebook'
-    login_session['username'] = data['name']
-    login_session['email'] = data['email']
-    login_session['facebook_id'] = data['id']
-
-    # get user picture
-    picture_result = h.request("https://graph.facebook.com/v2.2/me/picture?%s&redirect=0&height=200&width=200" % token, 'GET')[1]
-    picture_data = json.loads(picture_result)
-    login_session['picture'] = picture_data["data"]["url"]
-
-    # Check if user exists
-    user_id = getUserId(login_session['email'])
-    if not user_id:
-        user_id = createUser(login_session)
-    login_session['user_id'] = user_id
-
-    output = ''
-    output += '<h1>Welcome, '
-    output += login_session['username']
-    output += '!</h1>'
-    output += '<img src="'
-    output += login_session['picture']
-    output += ' " style = "width: 300px; height: 300px;border-radius: 150px;-webkit-border-radius: 150px;-moz-border-radius: 150px;"> '
-    flash("you are now logged in as %s" % login_session['username'])
-
-    return output
-
-
 @app.route('/fbdisconnect')
 def fbdisconnect():
     facebook_id = login_session['facebook_id']
-    url = "https://graph.facebook.com/%s/permissions" % facebook_id
+    access_token = login_session['access_token']
+    url = "https://graph.facebook.com/%s/permissions?access_token=%s" % (facebook_id, access_token)
     h = httplib2.Http()
     result = h.request(url, 'DELETE')[1]
     print("Result: ", result)
@@ -412,6 +442,12 @@ def fbdisconnect():
         return resp_json('Successfully disconnected!', 200)
     else:
         return resp_json('Failed to revoke token for given user.', 400)
+
+
+def resp_json(mess, code):
+    response = make_response(json.dumps(mess), code)
+    response.headers['Content-Type'] = 'application/json'
+    return response
 
 
 if __name__ == '__main__':

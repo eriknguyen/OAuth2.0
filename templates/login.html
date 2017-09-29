@@ -111,7 +111,15 @@
             });
         }
 
+
+        function loginFB() {
+            console.log("loginfb clicked");
+            FB.login();
+        }
+
     </script>
+
+        <button id="fb_btn" onclick="loginFB()">Test Login wo button</button>
 
         <fb:login-button scope="public_profile,email" onlogin="sendTokenToServer();">
             <a href='javascript:sendTokenToServer()'>Login with Facebook</a>
