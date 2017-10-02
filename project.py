@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, jsonify, url_for, flash
+import os
 
 app = Flask(__name__)
 
@@ -17,6 +18,9 @@ import httplib2
 import json
 from flask import make_response
 import requests
+
+# using facebook-sdk for python
+import facebook
 
 CLIENT_ID = json.loads(
     open('client_secrets.json', 'r').read()
@@ -333,13 +337,17 @@ def fbconnect():
 
     # Use token to get user info from API
     token = json.loads(result.decode('utf-8'))['access_token']
-    print(token)
-    userinfo_url = "https://graph.facebook.com/v2.8/me?access_token=%s&fields=name,id,email" % token
-    info_result = h.request(url, 'GET')
-    print("[[[info_result]]]")
-    print(info_result)
+    graph = facebook.GraphAPI(access_token=token, version="2.7")
+
+    args = {
+        'fields': 'id,name,email'
+    }
+    data = graph.get_object('me', **args)
+    # print("profile more: ", profile_more)
+    # # userinfo_url = "https://graph.facebook.com/v2.8/me?access_token=%s&fields=name,id,email" % token
+    # # info_result = h.request(url, 'GET')
     
-    data = json.loads(info_result)
+    # data = json.loads(info_result)
     login_session['provider'] = 'facebook'
     login_session['username'] = data['name']
     login_session['email'] = data['email']
@@ -347,11 +355,13 @@ def fbconnect():
 
     # store token
     login_session['access_token'] = token
+    print("TOKEN=", token)
 
     # get user picture
     h = httplib2.Http()
-    picture_result = h.request("https://graph.facebook.com/v2.2/me/picture?%s&redirect=0&height=200&width=200" % token, 'GET')[1]
+    picture_result = h.request("https://graph.facebook.com/v2.2/me/picture?access_token=%s&redirect=false&height=200&width=200" % token, 'GET')[1]
     picture_data = json.loads(picture_result)
+    # print(picture_data)
     login_session['picture'] = picture_data["data"]["url"]
 
     # Check if user exists
@@ -377,17 +387,9 @@ def disconnect():
     if 'provider' in login_session:
         if login_session['provider'] == 'google':
             gdisconnect()
-            # del login_session['gplus_id']
-            # del login_session['credentials']
         elif login_session['provider'] == 'facebook':
             fbdisconnect()
-            del login_session['facebook_id']
 
-        del login_session['user_id']
-        # del login_session['username']
-        # del login_session['email']
-        # del login_session['picture']
-        del login_session['provider']
         flash('You have successfully been logged out.')
         return redirect(url_for('showRestaurants'))
     else:
@@ -414,6 +416,8 @@ def gdisconnect():
     print("Result: ", result)
 
     if result['status'] == '200':
+        del login_session['provider']
+        del login_session['user_id']
         del login_session['access_token']
         del login_session['gplus_id']
         del login_session['username']
@@ -430,11 +434,13 @@ def fbdisconnect():
     access_token = login_session['access_token']
     url = "https://graph.facebook.com/%s/permissions?access_token=%s" % (facebook_id, access_token)
     h = httplib2.Http()
-    result = h.request(url, 'DELETE')[1]
-    print("Result: ", result)
+    result = h.request(url, 'DELETE')
+    result_status = json.loads(result[1])
 
-    if result['status'] == '200':
+    if result_status['success'] == True:
+        del login_session['provider']
         del login_session['user_id']
+        del login_session['access_token']
         del login_session['facebook_id']
         del login_session['username']
         del login_session['email']

@@ -2,9 +2,9 @@ from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy import create_engine
+import os
  
 Base = declarative_base()
-
 
 class User(Base):
     __tablename__ = 'user'
@@ -60,8 +60,8 @@ class MenuItem(Base):
        }
 
 
-
+# db_file = os.path.join(app.root_path, "/restaurantmenuwithusers.db")
+# engine = create_engine('sqlite:///' + db_file)
 engine = create_engine('sqlite:///restaurantmenuwithusers.db')
  
-
 Base.metadata.create_all(engine)
