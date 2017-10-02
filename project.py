@@ -337,17 +337,17 @@ def fbconnect():
 
     # Use token to get user info from API
     token = json.loads(result.decode('utf-8'))['access_token']
-    graph = facebook.GraphAPI(access_token=token, version="2.7")
-
-    args = {
-        'fields': 'id,name,email'
-    }
-    data = graph.get_object('me', **args)
-    # print("profile more: ", profile_more)
-    # # userinfo_url = "https://graph.facebook.com/v2.8/me?access_token=%s&fields=name,id,email" % token
-    # # info_result = h.request(url, 'GET')
     
-    # data = json.loads(info_result)
+    # graph = facebook.GraphAPI(access_token=token, version="2.7")
+    # args = {
+    #     'fields': 'id,name,email'
+    # }
+    # data = graph.get_object('me', **args)
+
+    userinfo_url = "https://graph.facebook.com/v2.8/me?access_token=%s&fields=name,id,email" % token
+    info_result = h.request(userinfo_url, 'GET')[1]
+    data = json.loads(info_result)
+
     login_session['provider'] = 'facebook'
     login_session['username'] = data['name']
     login_session['email'] = data['email']
@@ -355,7 +355,6 @@ def fbconnect():
 
     # store token
     login_session['access_token'] = token
-    print("TOKEN=", token)
 
     # get user picture
     h = httplib2.Http()
